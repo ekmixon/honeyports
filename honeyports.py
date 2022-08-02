@@ -44,43 +44,40 @@ class ThreadingTCPServer (socketserver.ThreadingMixIn, socketserver.TCPServer):
 class ServerHandler (socketserver.StreamRequestHandler):
 
   def handle(self):
-    if not daemon:
-      print ("Got Connection from: ", self.client_address)
-      print ("Blocking the address: ", self.client_address[0])
-    hostname = self.client_address[0]
-    if hostname == host:
-      print ('DANGER WILL ROBINSON: Source and Destination IP addresses match!')
-      return
-    thread = threading.current_thread()
-    
-    # If there is a full connection, create a firewall rule
-    # Run the command associated with the platform being run:
-    if platform == "Windows":
-      if not daemon:
-        print ("Creating a Windows Firewall Rule\n")
-      fw_result = call('netsh advfirewall firewall add rule name="honeyports" dir=in remoteip= ' + hostname + ' localport=any protocol=TCP action=block > NUL', shell=True)   
-    elif platform == "Linux":
-      if not daemon:
-        print ("Creating a Linux Firewall Rule\n")
-      else:
-        log='logger -t honeyports "blocked %s -- stupid bastard"' % hostname
-        os.popen(log)
-      command = '/sbin/iptables -A INPUT -s ' + hostname + ' -j REJECT'
-      fw_result = os.popen(command)
-      if fw_result:
-        fw_result=0
-      else:
-        fw_result=1
-    elif platform == "Darwin":
-      if not daemon:
-        print ("Creating a Mac OS X Firewall Rule\n")
-      fw_result = call(['ipfw', '-q add deny src-ip ' + hostname])
-    if not daemon:
-      if fw_result:
-        print ('Crapper, firewall rule not added')
-      else:
-        print ('I just blocked: ', hostname)
-      return
+     if not daemon:
+       print ("Got Connection from: ", self.client_address)
+       print ("Blocking the address: ", self.client_address[0])
+     hostname = self.client_address[0]
+     if hostname == host:
+       print ('DANGER WILL ROBINSON: Source and Destination IP addresses match!')
+       return
+     thread = threading.current_thread()
+
+       # If there is a full connection, create a firewall rule
+       # Run the command associated with the platform being run:
+     if platform == "Darwin":
+        if not daemon:
+          print ("Creating a Mac OS X Firewall Rule\n")
+        fw_result = call(['ipfw', f'-q add deny src-ip {hostname}'])
+     elif platform == "Linux":
+        if daemon:
+           log='logger -t honeyports "blocked %s -- stupid bastard"' % hostname
+           os.popen(log)
+        else:
+           print ("Creating a Linux Firewall Rule\n")
+        command = f'/sbin/iptables -A INPUT -s {hostname} -j REJECT'
+        fw_result = os.popen(command)
+        fw_result = 0 if fw_result else 1
+     elif platform == "Windows":
+        if not daemon:
+          print ("Creating a Windows Firewall Rule\n")
+        fw_result = call('netsh advfirewall firewall add rule name="honeyports" dir=in remoteip= ' + hostname + ' localport=any protocol=TCP action=block > NUL', shell=True)
+     if not daemon:
+       if fw_result:
+         print ('Crapper, firewall rule not added')
+       else:
+         print ('I just blocked: ', hostname)
+       return
 
   def finish(self):
     print (self.client_address, 'disconnected!')
@@ -95,24 +92,24 @@ def StartServer (threadName, host, port):
   serverthread.daemon = True
   serverthread.start()
 
-def MenuInteraction (threadName):
-  # Listen for user to type something then give options to
-  # Flush all firewall rules, quit or print the rules
-  while True:
-    mydata = input('Enter Commands (q=quit f=flush rules l=list rules): ')
+def MenuInteraction(threadName):
+     # Listen for user to type something then give options to
+     # Flush all firewall rules, quit or print the rules
+   while True:
+      mydata = input('Enter Commands (q=quit f=flush rules l=list rules): ')
 
-    if mydata == "f":
-      print ("Flushing firewall rules...")
-      print ('Flush command is: ', str(flush))
-      call(flush[0] + ' ' + flush[1], shell=True)
-    elif mydata == "l":
-      print ('Here is what your rules look like:')
-      call(fwlist[0] + ' ' +  fwlist[1], shell=True)
-    elif mydata == "q":
-      print ("Goodbye and thanks for playing...")
-      os._exit(1)
-    else:
-      print ("What?")
+      if mydata == "f":
+         print ("Flushing firewall rules...")
+         print('Flush command is: ', flush)
+         call(f'{flush[0]} {flush[1]}', shell=True)
+      elif mydata == "l":
+         print ('Here is what your rules look like:')
+         call(f'{fwlist[0]} {fwlist[1]}', shell=True)
+      elif mydata == "q":
+        print ("Goodbye and thanks for playing...")
+        os._exit(1)
+      else:
+         print ("What?")
 
 port=''                # Reserve a port for your service, user must use -p to specify port.
 version="0.5"
@@ -131,33 +128,32 @@ USAGE %s -p <port>
 
 
 try:
-        myopts, args = getopt.gnu_getopt(sys.argv[1:], "h: p: D", ["host", "port", "daemon"])
+   myopts, args = getopt.gnu_getopt(sys.argv[1:], "h: p: D", ["host", "port", "daemon"])
 except getopt.GetoptError as error:
-        print (str(error))
-        print (USAGE)
-        sys.exit(2)
+   print(error)
+   print (USAGE)
+   sys.exit(2)
 #initial check to verify we have any options since port num is required.
 if not myopts:
       print (USAGE)
       sys.exit(2)
 
 for o, a in myopts:
-  if (o == '-p' or o == '-port') and int(a) < 65536:
-    port=int(a)
-  elif (o == '-p' or o == '-port' ) and int(a) > 65535:
-    print("Not a valid port number")
-    print (USAGE)
-    sys.exit(2)
-  if o == '-D' or o == '-daemon':
-    daemon = 1
-  else: 
-    daemon = 0
-  if (o == '-h' or o == '-host'):
-    if not a:
-      print ("Forgot to provide an IP")
-      print (USAGE)
-    else:
-      host = a
+   if int(a) < 65536:
+      if o in ['-p', '-port']:
+         port=int(a)
+   elif int(a) > 65535:
+      if o in ['-p', '-port']:
+         print("Not a valid port number")
+         print (USAGE)
+         sys.exit(2)
+   daemon = 1 if o in ['-D', '-daemon'] else 0
+   if o in ['-h', '-host']:
+      if not a:
+         print ("Forgot to provide an IP")
+         print (USAGE)
+      else:
+         host = a
 if not daemon:	
   print (name, 'Version:', version)
   print ('I will listen on TCP port number: ', port) 
